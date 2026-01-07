@@ -1424,7 +1424,7 @@ class TelegramBot:
 ⚡ Скорость: {self.screener.scan_interval}с
 ━━━━━━━━━━━━━━━━━━━━━━━━"""
                 self.send_message(chat_id, msg, self.get_main_keyboard())
-            else:
+        else:
                 self.send_message(chat_id, "⚠️ Скринер уже работает", self.get_main_keyboard())
                         elif text == "🛑 Стоп":
             self.running = False
