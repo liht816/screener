@@ -970,6 +970,48 @@ class TelegramBot:
         self.top_mode = None
         self.last_menu_message = {}
         
+        # === ЗАЩИТА ОТ ДУБЛИРОВАНИЯ ===
+        self.processed_updates = set()  # Множество обработанных update_id
+        self.processed_messages = {}    # Словарь chat_id -> set(message_id)
+        self.max_processed_updates = 10000  # Максимальный размер кэша
+        self.update_lock = threading.Lock()  # Блокировка для потокобезопасности
+        
+    def is_duplicate(self, update_id, chat_id, message_id):
+        """Проверяет, было ли это сообщение уже обработано"""
+        with self.update_lock:
+            # Проверяем update_id
+            if update_id in self.processed_updates:
+                return True
+            
+            # Проверяем message_id для конкретного чата
+            if chat_id in self.processed_messages:
+                if message_id in self.processed_messages[chat_id]:
+                    return True
+            
+            # Добавляем в обработанные
+            self.processed_updates.add(update_id)
+            
+            if chat_id not in self.processed_messages:
+                self.processed_messages[chat_id] = set()
+            self.processed_messages[chat_id].add(message_id)
+            
+            # Очистка старых записей если превышен лимит
+            if len(self.processed_updates) > self.max_processed_updates:
+                # Удаляем первую половину записей (самые старые)
+                sorted_updates = sorted(self.processed_updates)
+                updates_to_remove = sorted_updates[:len(sorted_updates)//2]
+                for uid in updates_to_remove:
+                    self.processed_updates.discard(uid)
+            
+            # Очистка старых message_id для каждого чата
+            for cid in list(self.processed_messages.keys()):
+                if len(self.processed_messages[cid]) > 1000:
+                    # Оставляем только последние 500
+                    sorted_msgs = sorted(self.processed_messages[cid])
+                    self.processed_messages[cid] = set(sorted_msgs[-500:])
+            
+            return False
+        
     def send_message(self, chat_id, text, reply_markup=None):
         try:
             data = {'chat_id': chat_id, 'text': text, 'disable_web_page_preview': True}
@@ -1280,9 +1322,20 @@ class TelegramBot:
         
         self.send_message(chat_id, msg, self.get_main_keyboard())
     
-    def handle(self, message):
-        chat_id = message['chat']['id']
+    def handle(self, update):
+        """Обработчик с защитой от дублирования"""
+        # Получаем данные для проверки дублирования
+        update_id = update.get('update_id', 0)
+        message = update.get('message', {})
+        chat_id = message.get('chat', {}).get('id', 0)
+        message_id = message.get('message_id', 0)
         text = message.get('text', '').strip()
+        
+        # Проверяем на дубликат
+        if self.is_duplicate(update_id, chat_id, message_id):
+            print(f"⚠️ Пропущен дубликат: update_id={update_id}, message_id={message_id}")
+            return
+        
         self.screener.chat_id = chat_id
         
         if chat_id in self.waiting_for_input:
@@ -1373,8 +1426,7 @@ class TelegramBot:
                 self.send_message(chat_id, msg, self.get_main_keyboard())
             else:
                 self.send_message(chat_id, "⚠️ Скринер уже работает", self.get_main_keyboard())
-                
-        elif text == "🛑 Стоп":
+                        elif text == "🛑 Стоп":
             self.running = False
             self.send_message(chat_id, "🛑 Скринер остановлен", self.get_main_keyboard())
             
@@ -1616,7 +1668,7 @@ class TelegramBot:
                         offset = u['update_id'] + 1
                         if 'message' in u:
                             try:
-                                self.handle(u['message'])
+                                self.handle(u)
                             except Exception as e:
                                 print(f"❌ Handle error: {e}")
             except Exception as e:
