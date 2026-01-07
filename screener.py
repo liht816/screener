@@ -1423,10 +1423,10 @@ class TelegramBot:
 💰 Объём: {vol_filter}
 ⚡ Скорость: {self.screener.scan_interval}с
 ━━━━━━━━━━━━━━━━━━━━━━━━"""
-                self.send_message(chat_id, msg, self.get_main_keyboard())
+            self.send_message(chat_id, msg, self.get_main_keyboard())
         else:
-                self.send_message(chat_id, "⚠️ Скринер уже работает", self.get_main_keyboard())
-                        elif text == "🛑 Стоп":
+            self.send_message(chat_id, "⚠️ Скринер уже работает", self.get_main_keyboard())
+                elif text == "🛑 Стоп":
             self.running = False
             self.send_message(chat_id, "🛑 Скринер остановлен", self.get_main_keyboard())
             
